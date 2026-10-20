@@ -1,0 +1,64 @@
+Setup: screen is 800 x 600 (SFML coords, origin top-left, y down). The rectangle is half the
+width and half the height (400 x 300), centred at (400, 300), so it spans x in [200, 600],
+y in [150, 450]. Corners:
+    TL = (200, 150)   TR = (600, 150)
+    BL = (200, 450)   BR = (600, 450)
+The quad is split along the TR-BL diagonal.
+
+(a) Counterclockwise as seen on the screen (y down):
+    Top-left triangle:      (200, 150), (200, 450), (600, 150)      [TL, BL, TR]
+    Bottom-right triangle:  (600, 450), (600, 150), (200, 450)      [BR, TR, BL]
+    Check: going TL -> BL (down the left edge) -> TR (up to top-right) turns counterclockwise
+    on screen. (In the raw y-down numbers the 2D cross product
+    (BL-TL) x (TR-TL) = 0*0 - 300*400 = -120000 is negative, which is "clockwise" in y-up math
+    terms -- but since the y-axis is flipped, it appears counterclockwise on screen, which is
+    also what OpenGL sees after SFML's projection flips y.) Same sign for the second triangle:
+    (TR-BR) x (BL-BR) = 0*0 - (-300)(-400) = -120000.
+
+(b) Index buffer scheme: store each distinct position once in a vertex buffer and describe the
+    triangles by indices into it.
+        vertices = [ TL(200,150), BL(200,450), TR(600,150), BR(600,450) ]   (indices 0..3)
+        indices  = [ 0, 1, 2,   3, 2, 1 ]
+    (same counterclockwise order as (a)).
+
+    Memory with floats (4 bytes) and 4-byte indices; a position is 2 floats = 8 bytes.
+      (a) non-indexed: 6 vertices * 8 B                       = 48 bytes
+      (b) indexed:     4 vertices * 8 B + 6 indices * 4 B     = 32 + 24 = 56 bytes
+      -> For a single quad of positions-only, the index buffer actually costs 8 bytes MORE.
+
+    Memory with doubles (8 bytes); a position is 16 bytes:
+      (a) non-indexed: 6 * 16                                 = 96 bytes
+      (b) indexed:     4 * 16 + 6 * 4                         = 64 + 24 = 88 bytes
+      -> Now the index buffer wins by 8 bytes.
+
+    When does each approach win? Look per vertex. Let S = bytes per vertex, I = 4 bytes per
+    index, k = number of distinct triangles using that vertex.
+        non-indexed cost = k * S          indexed cost = S + k * I
+    Indexed wins when k*S > S + k*I, i.e. (k - 1) * S > k * I.
+      - floats, positions only (S = 8): 8(k-1) > 4k  =>  k > 2. In the quad, TL and BR are used
+        by 1 triangle (indexed loses: 12 vs 8) and TR, BL by 2 (tie: 16 vs 16), so overall it
+        loses. In a larger mesh (e.g. a grid of quads, where interior vertices are shared by
+        up to 6 triangles) indexing wins.
+      - doubles (S = 16): 16(k-1) > 4k  =>  k > 4/3, so any vertex shared by 2+ triangles
+        already benefits; the two shared corners save 8 bytes each, the two unshared ones
+        cost 4 bytes each: net 8 bytes saved.
+      - In general, the bigger the vertex (doubles, or extra attributes like UV coords and
+        colour -- an sf::Vertex is 20 bytes) and the more sharing, the more indexing wins.
+
+(c) The UV at a screen point inside a triangle is the barycentric (convex-combination) blend
+    of the corners' UVs. Point P = (500, 301).
+
+    Which triangle? The diagonal from TR(600,150) to BL(200,450) at x = 500 is at
+    y = 150 + (600-500) * 300/400 = 225. P has y = 301 > 225, so P is in the bottom-right
+    triangle (TR, BL, BR) with UVs TR=(1,0), BL=(0,1), BR=(1,1).
+
+    Solve P = a*TR + b*BL + c*BR with a + b + c = 1:
+      x: 600a + 200b + 600c = 500  ->  600(1-b) + 200b = 500  ->  b = 1/4
+      y: 150a + 450b + 450c = 301  ->  150a + 450(1-a) = 301  ->  a = 149/300
+      c = 1 - 1/4 - 149/300 = 76/300
+    UV = a(1,0) + b(0,1) + c(1,1) = (a + c, b + c) = (225/300, 151/300)
+
+    UV(500, 301) = (0.75, 151/300) ~= (0.75, 0.5033)
+
+    Sanity check: because the UVs are an axis-aligned linear map of the rectangle, this equals
+    ((500-200)/400, (301-150)/300) = (0.75, 151/300).

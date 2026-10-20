@@ -1,0 +1,14 @@
+Q1a. R_theta has top-left block [cos t, -sin t; sin t, cos t].
+
+Look at where the x-axis unit vector (1, 0) goes for a small positive theta:
+    R(1, 0) = (cos t, sin t)
+so its y-component becomes positive (and (0,1) goes to (-sin t, cos t), i.e. toward -x).
+
+y-axis pointing DOWN (SFML / screen coords): +y is down on the screen, so (1,0) is tipped
+downward, from "right" toward "down". Increasing theta rotates CLOCKWISE (as seen on screen).
+
+y-axis pointing UP (standard math / OpenGL coords): +y is up, so (1,0) is tipped from "right"
+toward "up". Increasing theta rotates COUNTERCLOCKWISE.
+
+(Same matrix in both cases; only the visual direction flips, because flipping the y-axis
+is a reflection, and reflections reverse orientation.)
